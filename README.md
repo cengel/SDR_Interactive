@@ -1,10 +1,10 @@
 # SDR_Interactive
 
-An interactive visualization of data deposited in the Stanford Digital Repository using less than 100 lines of R code. Data are accessed via purl directly from within R .
+An interactive visualization of data deposited in the [Stanford Digital Repository](http://library.stanford.edu/research/stanford-digital-repository) using less than 100 lines of R code. Data are accessed directly from within R .
 
-Inspired by [Jack Reed](http://library.stanford.edu/blogs/digital-library-blog/2016/06/using-r-stanford-digital-repository).
+Inspired by [Jack Reed's post](http://library.stanford.edu/blogs/digital-library-blog/2016/06/using-r-stanford-digital-repository).
 
-Visualization: https://cengel.shinyapps.io/RioSlaveMarket/
+Interactive Visualization: https://cengel.shinyapps.io/RioSlaveMarket/
 
 ### References:
 
