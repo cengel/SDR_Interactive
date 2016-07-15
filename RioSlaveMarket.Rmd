@@ -1,0 +1,113 @@
+---
+title: "Rio Slave Market Transactions"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(ggplot2)
+library(plotly)
+library(leaflet)
+
+# read dataframe 
+slaveTransactions <- read.csv(url("https://stacks.stanford.edu/file/druid:wt635jq5834/SLAVE_TRANSACTIONS_v2.csv"))
+# some preps for plotting
+slaveTransactions$DATE <- as.Date(slaveTransactions$DATE, format = "%d/%m/%Y")
+slaveTransactions$SLAVE_GEN <- ifelse(slaveTransactions$SLAVE_GEN, "female slave", "male slave")
+slaveTransactions$XX_SELL <- ifelse(slaveTransactions$XX_SELL, "female seller", "male seller")
+
+# reprojecting ... 
+UTMtoWGS <- function(pts){   # takes data frame with X/Y in that order
+  require(rgdal)
+  require(sp)
+  coordinates(pts) <- c(1,2)
+  proj4string(pts) <- CRS("+init=epsg:32723")     #UTM23S 
+  pts <- spTransform(pts,CRS("+init=epsg:4326"))  #WGS84
+  pts <- data.frame(coordinates(pts))
+  names(pts) <- paste0(names(pts), "_WGS")
+  return(pts)
+}
+
+# we'll add the columns here
+slaveTransactions <- cbind(slaveTransactions,UTMtoWGS(slaveTransactions[,c("X_SELLER", "Y_SELLER")]))
+slaveTransactions <- cbind(slaveTransactions,UTMtoWGS(slaveTransactions[,c("X_BUYER", "Y_BUYER")]))
+
+# deal with gender selection
+genSel <- reactive({
+  input$pGroup
+})
+# deal with age range
+dfrSel <- reactive({
+  slaveTransactions[slaveTransactions$SLAVE_AGE >= input$aRange[1] & slaveTransactions$SLAVE_AGE < input$aRange[2],]
+  
+})
+
+# deal with lat/lons - maybe there is a smarter way than returning a list
+locSel <- reactive({
+  ptsSeller <- dfrSel()[dfrSel()$X_SELLER_WGS != -45.00000,] 
+  ptsBuyer <- dfrSel()[dfrSel()$X_BUYER_WGS != -45.00000,] 
+  list(ptsSeller, ptsBuyer)
+})
+```
+
+Inputs {.sidebar}
+-------------------------------------
+
+```{r}
+radioButtons("pGroup", label = h3("Gender of:"),
+                   c("Slave" = "SLAVE_GEN",
+                     "Seller" = "XX_SELL"))
+
+sliderInput("aRange", label = h3("Slave Age Range:"),
+              min = min(slaveTransactions$SLAVE_AGE), max = max(slaveTransactions$SLAVE_AGE), value=range(slaveTransactions$SLAVE_AGE))
+
+```
+
+References: 
+
+**Frank, ZL, Berry, W, and Alves, TC. (2010)** Data Supplement for "The Slave Market in Rio de Janeiro: Movement, Context, and Social Experience." [Stanford Digital Repository](http://library.stanford.edu/research/stanford-digital-repository). Available at http://purl.stanford.edu/wt635jq5834.
+
+[The Slave Market in Rio de Janeiro: Movement, Context, and Social Experience](http://stanford.edu/group/spatialhistory/cgi-bin/site/viz.php?id=143&project_id=0).
+
+_A proof of concept for an interactive visualization of SDR data in less than 100 lines of R code. Github link [here](https://github.com/cengel/SDR_Interactive)._
+
+
+Column
+-------------------------------------
+
+### Histogram
+
+```{r}
+renderPlotly({
+    p <- ggplot() +  
+    geom_histogram(data = dfrSel(), aes_string(x = "DATE", fill=genSel()), binwidth = 1) +
+  scale_x_date(date_labels = "   %b %d", # We add 3 blank spaces here sp the tilted labels are not cut off
+              breaks = seq(min(slaveTransactions$DATE), max(slaveTransactions$DATE), 7), 
+              limits = range(slaveTransactions$DATE)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  xlab("") + ylim(c(0,20))
+
+  ggplotly(p)
+})
+
+```
+
+### Map
+```{r}
+renderLeaflet({
+
+    leaflet() %>%
+    addTiles() %>%
+    addCircleMarkers(lng=locSel()[[1]]$X_SELLER_WGS, lat=locSel()[[1]]$Y_SELLER_WGS, group="Sellers", popup=paste0("Sold from here: ", locSel()[[1]]$SLAVE_NM),
+    color = ifelse(locSel()[[1]]$SLAVE_GEN == "female slave", "red", "navy"),
+    stroke = FALSE, fillOpacity = 0.5, radius = 5) %>%
+    addCircleMarkers(lng=locSel()[[2]]$X_BUYER_WGS, lat=locSel()[[2]]$Y_BUYER_WGS, group="Buyers", popup=paste0("Sold to here: ", locSel()[[2]]$SLAVE_NM),
+    color = ifelse(locSel()[[2]]$SLAVE_GEN == "female slave", "red", "navy"),
+    stroke = FALSE, fillOpacity = 0.5, radius = 5) %>%
+    addLayersControl(overlayGroups = c("Sellers", "Buyers"),
+                    options = layersControlOptions(collapsed = FALSE)) %>%
+     addLegend("bottomright", pal = colorFactor(c("red", "navy"), domain = c("female slave", "male slave")), values = c("female slave", "male slave"), opacity = 0.8)
+})
+```
+
